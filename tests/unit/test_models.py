@@ -8,6 +8,9 @@ from fpe.models import (
     AnalysisState,
     DecisionEvent,
     ExecContext,
+    FlowGraph,
+    GraphEdge,
+    GraphNode,
     InterfaceContext,
     LinkResolution,
     NeighborInfo,
@@ -151,6 +154,7 @@ class TestAnalysisState:
         assert state.current_hop == 0
         assert state.max_hops == 16
         assert state.confidence == 1.0
+        assert state.graph.nodes == []
 
     def test_path_node(self):
         n = PathNode(
@@ -182,3 +186,17 @@ class TestToolResult:
         tr = ToolResult(ok=False, tool="fpe.analyze_flow", error="something went wrong")
         assert tr.ok is False
         assert tr.error == "something went wrong"
+
+
+class TestGraphModels:
+    def test_graph_node(self):
+        node = GraphNode(id="n1", kind="interface", label="lan1")
+        assert node.kind == "interface"
+
+    def test_flow_graph(self):
+        graph = FlowGraph(
+            nodes=[GraphNode(id="n1", kind="interface", label="lan1")],
+            edges=[GraphEdge(src="n1", dst="n2", relation="ingress_to_port", reason="test")],
+        )
+        assert len(graph.nodes) == 1
+        assert graph.edges[0].relation == "ingress_to_port"

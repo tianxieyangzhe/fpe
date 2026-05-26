@@ -28,6 +28,9 @@ def render_text(result: AnalysisResult) -> str:
     if result.summary:
         lines.extend(["", "Summary:", f"  {result.summary}"])
 
+    if result.mermaid:
+        lines.extend(["", "Mermaid:", result.mermaid])
+
     return "\n".join(lines)
 
 

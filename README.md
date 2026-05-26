@@ -94,7 +94,7 @@ python -m fpe.mcp.server --mode stdio
 {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
 → {"jsonrpc": "2.0", "id": 1, "result": {"tools": [...]}}
 
-{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "fpe.analyze_flow", "arguments": {"packet": {"src_ip": "10.0.0.2", "dst_ip": "8.8.8.8"}}}}
+{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "fpe.analyze_flow", "arguments": {"packet": {"src_ip": "10.0.0.2", "dst_ip": "8.8.8.8", "ingress_if": "lan1"}}}}
 → {"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "text", "text": "..."}]}}
 ```
 
@@ -130,7 +130,7 @@ curl -X POST http://localhost:8000/message?session_id=<uuid> \
     "params": {
       "name": "fpe.analyze_flow",
       "arguments": {
-        "packet": {"src_ip": "10.0.0.2", "dst_ip": "8.8.8.8"}
+        "packet": {"src_ip": "10.0.0.2", "dst_ip": "8.8.8.8", "ingress_if": "lan1"}
       }
     }
   }'
@@ -156,13 +156,136 @@ curl -X POST http://localhost:8000/message \
 
 | 工具 | 说明 |
 |------|------|
-| `fpe.analyze_flow` | 完整链路分析 |
+| `fpe.analyze_flow` | OVS 优先的完整链路分析，输出结构化路径、风险和 Mermaid 图 |
 | `fpe.get_interface_context` | 接口信息 |
-| `fpe.get_ip_rules` | IP 策略路由规则 |
+| `fpe.get_rule` | IP 策略路由规则，可按报文筛选匹配规则 |
 | `fpe.get_route` | 路由表 |
-| `fpe.resolve_next_hop` | 下一跳解析 |
-| `fpe.get_ovs_info` | OVS 信息 |
-| `fpe.check_neighbor` | 邻居表 |
+| `fpe.get_neighbor` | 邻居表 |
+| `fpe.get_ovs_bridges` | OVS 网桥/端口信息，可附带每桥 flows |
+| `fpe.get_ovs_flows` | OVS flows 信息，可按 ingress/报文筛选候选 flow |
+
+#### 工具使用说明
+
+##### `fpe.analyze_flow`
+
+目的：
+
+1. 作为主分析入口，回答“这条流量为什么这样走”。
+2. 优先按 OVS `bridge -> port -> flow -> action` 推断路径。
+3. 当 OVS 将流量送入内核时，再继续做 `rule -> route -> neighbor` 分析。
+4. 直接产出结构化图和 Mermaid 链路图。
+
+关键参数：
+
+1. `packet.src_ip`：源 IP，必填。
+2. `packet.dst_ip`：目的 IP，必填。
+3. `packet.ingress_if`：入口接口，OVS-first 分析必填。
+4. `packet.protocol` / `src_port` / `dst_port`：提高 flow 和规则命中精度。
+5. `packet.vlan_id`：入口 VLAN，适合桥内转发场景。
+6. `packet.tunnel_id`：VNI / tunnel id，适合 overlay 场景。
+7. `packet.fwmark`：策略路由辅助字段。
+8. `exec_ctx.namespace` / `exec_ctx.vrf`：指定分析所在网络空间。
+9. `options.max_hops`：控制分析深度。
+
+输出重点：
+
+1. `path`：人类可读路径。
+2. `decision_chain`：关键判断过程。
+3. `risks`：高价值风险点。
+4. `graph`：前端可直接消费的图结构。
+5. `mermaid`：可直接渲染的链路图文本。
+
+##### `fpe.get_interface_context`
+
+目的：
+
+1. 查询接口属性、角色和所属 namespace / VRF。
+2. 为拓扑确认和画图提供基础节点。
+
+关键参数：
+
+1. `iface`：接口名；省略时返回全部接口。
+2. `namespace` / `vrf`：限定作用域。
+3. `if_type`：按 `physical`、`veth`、`bridge`、`vrf`、`tun` 等过滤。
+4. `role`：按 `underlay-uplink`、`bridge-port`、`vrf-member` 等过滤。
+5. `state`：按 `UP` / `DOWN` 过滤。
+
+##### `fpe.get_rule`
+
+目的：
+
+1. 查询策略路由规则。
+2. 判断某条报文命中哪些规则，以及首条生效规则是什么。
+
+关键参数：
+
+1. `namespace` / `vrf`：限定规则所在作用域。
+2. `priority`：只看某个优先级。
+3. `table`：只看某个路由表对应的规则。
+4. `packet`：传入报文后，返回 `matched_rules` 与 `selected_rule`。
+
+##### `fpe.get_route`
+
+目的：
+
+1. 查询路由表。
+2. 对指定目标地址返回最优匹配路由。
+3. 过滤某个出接口相关的路由。
+
+关键参数：
+
+1. `namespace` / `vrf`：限定作用域。
+2. `table`：指定路由表。
+3. `dst_ip`：计算最优路由。
+4. `device`：只看通过某个设备转发的路由。
+5. `best_only`：只返回最优路由。
+
+##### `fpe.get_neighbor`
+
+目的：
+
+1. 查询 ARP/NDP 邻居。
+2. 验证下一跳是否存在以及是否可达。
+
+关键参数：
+
+1. `namespace` / `vrf`：限定作用域。
+2. `device`：只看某个设备。
+3. `target_ip`：只看某个邻居 IP。
+4. `state`：按 `REACHABLE`、`FAILED` 等过滤。
+5. `reachable_only`：只返回可达邻居。
+
+##### `fpe.get_ovs_bridges`
+
+目的：
+
+1. 查询 OVS bridge、port、ofport、VLAN、trunk 信息。
+2. 确认某个接口属于哪个桥。
+3. 为链路图生成 bridge/port 拓扑。
+
+关键参数：
+
+1. `bridge`：只看单个桥。
+2. `port`：只返回包含该端口的桥。
+3. `interface`：只返回包含该接口的桥。
+4. `include_flows`：一并附带每个桥上的 flows。
+
+##### `fpe.get_ovs_flows`
+
+目的：
+
+1. 查询 OVS flow 表项。
+2. 按入口接口缩小到相关桥。
+3. 按报文字段筛选候选命中 flow。
+
+关键参数：
+
+1. `bridge`：指定桥。
+2. `table`：指定 table。
+3. `ingress_if`：自动定位所在桥和入口 port。
+4. `packet`：按报文计算 `matched_flows`。
+5. `match_contains`：按原始 match 文本做子串过滤。
+6. `active_only`：只返回命中计数大于 0 的 flow。
 
 ## 项目结构
 

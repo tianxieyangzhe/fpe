@@ -29,6 +29,7 @@ class TestStdioTransport:
         assert len(response["result"]["tools"]) >= 1
         tool_names = [t["name"] for t in response["result"]["tools"]]
         assert "fpe.analyze_flow" in tool_names
+        assert "fpe.resolve_next_hop" not in tool_names
 
         # Verify inputSchema is populated for each tool
         for tool in response["result"]["tools"]:
@@ -42,11 +43,13 @@ class TestStdioTransport:
         analyze = next(t for t in response["result"]["tools"] if t["name"] == "fpe.analyze_flow")
         assert "packet" in analyze["inputSchema"]["properties"]
         assert "packet" in analyze["inputSchema"]["required"]
+        assert "exec_ctx" in analyze["inputSchema"]["properties"]
 
         iface_tool = next(t for t in response["result"]["tools"] if t["name"] == "fpe.get_interface_context")
         assert "iface" in iface_tool["inputSchema"]["properties"]
         assert "namespace" in iface_tool["inputSchema"]["properties"]
         assert "vrf" in iface_tool["inputSchema"]["properties"]
+        assert "if_type" in iface_tool["inputSchema"]["properties"]
         assert iface_tool["inputSchema"]["required"] == []
 
     @pytest.mark.asyncio

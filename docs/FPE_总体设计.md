@@ -245,11 +245,11 @@ MCP client 调用工具：
 
 1. `fpe.analyze_flow`
 2. `fpe.get_interface_context`
-3. `fpe.get_ip_rules`
+3. `fpe.get_rule`
 4. `fpe.get_route`
-5. `fpe.resolve_next_hop`
-6. `fpe.get_ovs_info`
-7. `fpe.check_neighbor`
+5. `fpe.get_neighbor`
+6. `fpe.get_ovs_bridges`
+7. `fpe.get_ovs_flows`
 
 传输形式：
 

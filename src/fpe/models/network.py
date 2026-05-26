@@ -126,6 +126,8 @@ class OvsFlow(BaseModel):
     priority: int
     match: str
     actions: str
+    match_fields: dict[str, str] = {}
+    action_list: list[str] = []
     cookie: str | None = None
     duration_sec: float | None = None
     n_packets: int | None = None
@@ -145,3 +147,29 @@ class NeighborInfo(BaseModel):
     reachable: bool
     namespace: str | None = None
     vrf: str | None = None
+
+
+# ── OVS Group models ────────────────────────────────────────────────
+
+class OvsGroupBucket(BaseModel):
+    """Describes an OVS group bucket (action set within a group)."""
+
+    bucket_id: int
+    weight: int
+    actions: str
+    packet_count: int = 0
+    byte_count: int = 0
+    watch_port: int | None = None
+    watch_group: int | None = None
+    active: bool | None = None
+
+
+class OvsGroup(BaseModel):
+    """Describes an OVS group definition with buckets and statistics."""
+
+    group_id: int
+    group_type: str  # "select", "all", "ff", "indirect"
+    n_buckets: int
+    packet_count: int = 0
+    byte_count: int = 0
+    buckets: list[OvsGroupBucket] = []

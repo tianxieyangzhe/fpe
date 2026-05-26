@@ -27,6 +27,7 @@ from fpe.collectors.link import (
 from fpe.collectors.ovs import (
     get_ovs_bridges,
     get_ovs_flows,
+    get_ovs_groups,
     get_ovs_info,
     parse_ovs,
     parse_ovs_flows,
@@ -46,6 +47,7 @@ __all__ = [
     "get_neighbors",
     "get_ovs_bridges",
     "get_ovs_flows",
+    "get_ovs_groups",
     "get_ovs_info",
     "get_route",
     "get_rules",

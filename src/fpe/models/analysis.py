@@ -36,6 +36,35 @@ class RiskItem(BaseModel):
     message: str
 
 
+class GraphNode(BaseModel):
+    """A graph node used to render the inferred flow path."""
+
+    id: str
+    kind: str
+    label: str
+    namespace: str | None = None
+    vrf: str | None = None
+    attrs: dict = {}
+
+
+class GraphEdge(BaseModel):
+    """A graph edge between two path entities."""
+
+    src: str
+    dst: str
+    relation: str
+    reason: str
+    evidence_level: str = "inferred"
+    attrs: dict = {}
+
+
+class FlowGraph(BaseModel):
+    """Graph representation of the inferred flow path."""
+
+    nodes: list[GraphNode] = []
+    edges: list[GraphEdge] = []
+
+
 class AnalysisState(BaseModel):
     """Current state of a flow analysis."""
 
@@ -51,6 +80,7 @@ class AnalysisState(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     confidence_reasons: list[str] = []
     visited: list[str] = []
+    graph: FlowGraph = Field(default_factory=FlowGraph)
 
 
 # ── Output / result models ───────────────────────────────────────────
@@ -76,3 +106,5 @@ class AnalysisResult(BaseModel):
     confidence: float
     confidence_reasons: list[str]
     summary: str
+    graph: FlowGraph | None = None
+    mermaid: str | None = None

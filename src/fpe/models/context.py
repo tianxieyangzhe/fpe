@@ -17,6 +17,8 @@ class PacketContext(BaseModel):
     egress_if: str | None = None
     fwmark: str | None = None
     tos: int | None = None
+    vlan_id: int | None = None
+    tunnel_id: str | None = None
     ip_version: int = Field(default=4, ge=4, le=6)
 
 

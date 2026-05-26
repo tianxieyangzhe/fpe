@@ -55,10 +55,10 @@ def analyze(
     async def run() -> None:
         analyzer = Analyzer()
         result = await analyzer.analyze(
-            host=host,
             packet=packet,
             exec_ctx=exec_ctx,
             options={"max_hops": max_hops},
+            host=host,
         )
 
         if output == "json":

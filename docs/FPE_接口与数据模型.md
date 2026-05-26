@@ -9,7 +9,7 @@ MCP 接口设计要求：
 1. 输入稳定
 2. 输出稳定
 3. 全部结构化
-4. 执行上下文通过环境变量隐式传递，不侵入工具入参
+4. 执行上下文支持通过 `exec_ctx` 显式传入，并由环境变量兜底
 5. 错误可归类
 6. 同时支持 `stdio` 和 `SSE` 两种传输形式
 7. `SSE` 模式支持通过 `POST` 建立连接
@@ -47,10 +47,12 @@ FPE MCP Server 必须支持以下两种形式：
 
 ### 2.1 `fpe.analyze_flow`
 
-功能：
+目的：
 
-1. 执行完整链路分析
-2. 返回路径骨架与结构化状态
+1. 作为主分析入口，对单条业务流量进行 OVS 优先的完整分析。
+2. 优先解释 OVS `bridge -> port -> flow -> action`。
+3. 在 OVS 将流量送入内核时，继续分析 `rule -> route -> neighbor`。
+4. 输出结构化路径、风险、图结构和 Mermaid。
 
 输入：
 
@@ -61,100 +63,210 @@ FPE MCP Server 必须支持以下两种形式：
     "dst_ip": "8.8.8.8",
     "protocol": "icmp",
     "ingress_if": "lan0",
+    "vlan_id": 10,
+    "tunnel_id": "1001",
     "ip_version": 4
   },
+  "exec_ctx": {
+    "namespace": "ns_app",
+    "vrf": "vrf-app",
+    "host": "192.0.2.10"
+  },
   "options": {
-    "max_hops": 16,
-    "include_ovs": true,
-    "include_neighbor": true
+    "max_hops": 16
   }
 }
 ```
 
-输出：
+参数说明：
 
-```json
-{
-  "ok": true,
-  "tool": "fpe.analyze_flow",
-  "data": {
-    "status": "COMPLETED",
-    "path": [],
-    "decision_chain": [],
-    "warnings": []
-  },
-  "error": null
-}
-```
+1. `packet.src_ip` / `packet.dst_ip`：源和目的地址，必填。
+2. `packet.ingress_if`：入口接口，OVS-first 分析必填。
+3. `packet.protocol` / `src_port` / `dst_port`：提高 flow 和规则命中精度。
+4. `packet.vlan_id`：用于 VLAN 相关 flow 命中。
+5. `packet.tunnel_id`：用于 tunnel / VNI 相关 flow 命中。
+6. `packet.fwmark`：用于策略路由命中。
+7. `exec_ctx.namespace` / `exec_ctx.vrf`：指定分析视角。
+8. `options.max_hops`：控制分析深度。
+
+输出重点：
+
+1. `path`：人类可读路径。
+2. `decision_chain`：关键判断过程。
+3. `risks`：高价值异常点。
+4. `graph`：前端可直接消费的图结构。
+5. `mermaid`：可直接渲染的链路图。
 
 ### 2.2 `fpe.get_interface_context`
 
+目的：
+
+1. 查询接口属性、角色和所属 namespace / VRF。
+2. 为路径推断和链路图构图提供基础节点。
+
 输入：
 
 ```json
 {
-  "iface": "lan0"
+  "iface": "lan0",
+  "namespace": "ns_app",
+  "vrf": "vrf-app",
+  "if_type": "veth",
+  "role": "bridge-port",
+  "state": "UP"
 }
 ```
 
-### 2.3 `fpe.get_ip_rules`
+参数说明：
+
+1. `iface`：接口名；省略时返回全部接口。
+2. `namespace` / `vrf`：限定查询作用域。
+3. `if_type`：按接口类型过滤。
+4. `role`：按接口角色过滤。
+5. `state`：按接口状态过滤。
+
+### 2.3 `fpe.get_rule`
+
+目的：
+
+1. 查询策略路由规则。
+2. 针对特定报文返回命中规则和首条生效规则。
 
 输入：
 
 ```json
 {
+  "namespace": "ns_app",
+  "vrf": "vrf-app",
   "packet": {
     "src_ip": "10.0.0.2",
     "dst_ip": "8.8.8.8",
     "ingress_if": "lan0",
-    "protocol": "icmp",
+    "fwmark": "0x10",
     "ip_version": 4
   }
 }
 ```
 
+参数说明：
+
+1. `priority`：只查某个优先级。
+2. `table`：只查某张表的规则。
+3. `packet`：返回 `matched_rules` 和 `selected_rule`。
+
 ### 2.4 `fpe.get_route`
 
+目的：
+
+1. 查询路由表。
+2. 对目标地址返回最优匹配路由。
+3. 过滤某个出接口相关的路由。
+
 输入：
 
 ```json
 {
+  "namespace": "ns_app",
+  "vrf": "vrf-app",
   "table": "100",
-  "dst_ip": "8.8.8.8"
-}
-```
-
-### 2.5 `fpe.resolve_next_hop`
-
-输入：
-
-```json
-{
-  "device": "veth0",
-  "next_hop_ip": "192.168.1.1"
-}
-```
-
-### 2.6 `fpe.get_ovs_info`
-
-输入：
-
-```json
-{
-  "port": "patch-wan"
-}
-```
-
-### 2.7 `fpe.check_neighbor`
-
-输入：
-
-```json
-{
+  "dst_ip": "8.8.8.8",
   "device": "wan0",
-  "target_ip": "192.168.1.1"
+  "best_only": true
 }
 ```
+
+参数说明：
+
+1. `table`：指定路由表。
+2. `dst_ip`：用于最优匹配。
+3. `device`：只看通过某个设备的路由。
+4. `best_only`：只返回最优路由。
+
+### 2.5 `fpe.get_neighbor`
+
+目的：
+
+1. 查询 ARP/NDP 邻居。
+2. 验证下一跳是否存在以及是否可达。
+
+输入：
+
+```json
+{
+  "namespace": "ns_app",
+  "vrf": "vrf-app",
+  "device": "wan0",
+  "target_ip": "192.168.1.1",
+  "state": "REACHABLE",
+  "reachable_only": true
+}
+```
+
+参数说明：
+
+1. `device`：只看某个设备上的邻居。
+2. `target_ip`：只看某个 IP。
+3. `state`：按状态过滤。
+4. `reachable_only`：只返回可达邻居。
+
+### 2.6 `fpe.get_ovs_bridges`
+
+目的：
+
+1. 查询 OVS bridge、port、ofport、VLAN 和 trunk 结构。
+2. 确认某个接口属于哪个桥。
+3. 为链路图生成 bridge/port 拓扑。
+
+输入：
+
+```json
+{
+  "bridge": "br-int",
+  "interface": "lan1",
+  "include_flows": true
+}
+```
+
+参数说明：
+
+1. `bridge`：只查单个桥。
+2. `port`：只返回包含该端口的桥。
+3. `interface`：只返回包含该接口的桥。
+4. `include_flows`：附带每个桥上的 flows。
+
+### 2.7 `fpe.get_ovs_flows`
+
+目的：
+
+1. 查询 OVS flow 表项。
+2. 按入口接口缩小到相关桥。
+3. 按完整报文返回候选命中 flow。
+
+输入：
+
+```json
+{
+  "ingress_if": "lan1",
+  "table": 0,
+  "packet": {
+    "src_ip": "10.0.0.2",
+    "dst_ip": "8.8.8.8",
+    "protocol": "icmp",
+    "ingress_if": "lan1",
+    "vlan_id": 10
+  },
+  "active_only": true
+}
+```
+
+参数说明：
+
+1. `bridge`：指定桥。
+2. `table`：指定 table。
+3. `ingress_if`：自动定位所属桥和入口 port。
+4. `packet`：返回 `matched_flows`。
+5. `match_contains`：按原始 match 文本做子串过滤。
+6. `active_only`：只返回计数大于 0 的 flow。
 
 ## 3. 通用返回结构
 
@@ -183,12 +295,14 @@ class PacketContext(BaseModel):
     egress_if: str | None = None
     fwmark: str | None = None
     tos: int | None = None
+    vlan_id: int | None = None
+    tunnel_id: str | None = None
     ip_version: int = 4
 ```
 
 ### 4.2 ExecContext
 
-执行上下文——由 `RemoteExecutor` 从环境变量（`FPE_HOST`/`FPE_NAMESPACE`/`FPE_VRF` 等）内部构建，无需工具调用方传入。
+执行上下文——可由工具调用方显式传入，也可由 `RemoteExecutor` 从环境变量（`FPE_HOST`/`FPE_NAMESPACE`/`FPE_VRF` 等）内部构建。
 
 ```python
 class ExecContext(BaseModel):
@@ -207,6 +321,8 @@ class InterfaceContext(BaseModel):
     namespace: str | None = None
     vrf: str | None = None
     kind: str
+    if_type: str = "physical"
+    role: str | None = None
     state: str | None = None
     mtu: int | None = None
     mac: str | None = None
@@ -215,7 +331,18 @@ class InterfaceContext(BaseModel):
     peer: str | None = None
 ```
 
-### 4.4 RuleMatch
+### 4.4 RuleInfo
+
+```python
+class RuleInfo(BaseModel):
+    priority: int
+    table: str
+    raw: str
+    namespace: str | None = None
+    vrf: str | None = None
+```
+
+### 4.5 RuleMatch
 
 ```python
 class RuleMatch(BaseModel):
@@ -226,7 +353,7 @@ class RuleMatch(BaseModel):
     raw: str
 ```
 
-### 4.5 RuleMatchResult
+### 4.6 RuleMatchResult
 
 ```python
 class RuleMatchResult(BaseModel):
@@ -235,7 +362,7 @@ class RuleMatchResult(BaseModel):
     warnings: list[str] = []
 ```
 
-### 4.6 NextHop
+### 4.7 NextHop
 
 ```python
 class NextHop(BaseModel):
@@ -244,7 +371,7 @@ class NextHop(BaseModel):
     weight: int | None = None
 ```
 
-### 4.7 RouteResult
+### 4.8 RouteResult
 
 ```python
 class RouteResult(BaseModel):
@@ -256,9 +383,11 @@ class RouteResult(BaseModel):
     scope: str | None = None
     next_hops: list[NextHop] = []
     raw: str
+    namespace: str | None = None
+    vrf: str | None = None
 ```
 
-### 4.8 LinkResolution
+### 4.9 LinkResolution
 
 ```python
 class LinkResolution(BaseModel):
@@ -270,20 +399,50 @@ class LinkResolution(BaseModel):
     requires_ovs: bool = False
 ```
 
-### 4.9 OvsPortInfo
+### 4.10 OvsPortInfo
 
 ```python
 class OvsPortInfo(BaseModel):
     bridge: str
     port: str
+    interface: str | None = None
     port_type: str
     ofport: int | None = None
     vlan_tag: int | None = None
     trunk_vlans: list[int] = []
+    mac: str | None = None
     internal_path_known: bool = False
 ```
 
-### 4.10 NeighborInfo
+### 4.11 OvsBridge
+
+```python
+class OvsBridge(BaseModel):
+    name: str
+    datapath_id: str | None = None
+    datapath_type: str | None = None
+    ports: list[OvsPortInfo] = []
+```
+
+### 4.12 OvsFlow
+
+```python
+class OvsFlow(BaseModel):
+    bridge: str
+    table: int
+    priority: int
+    match: str
+    actions: str
+    match_fields: dict[str, str] = {}
+    action_list: list[str] = []
+    cookie: str | None = None
+    duration_sec: float | None = None
+    n_packets: int | None = None
+    n_bytes: int | None = None
+    idle_age_sec: float | None = None
+```
+
+### 4.13 NeighborInfo
 
 ```python
 class NeighborInfo(BaseModel):
@@ -292,9 +451,11 @@ class NeighborInfo(BaseModel):
     mac: str | None = None
     state: str
     reachable: bool
+    namespace: str | None = None
+    vrf: str | None = None
 ```
 
-### 4.11 PathNode
+### 4.14 PathNode
 
 ```python
 class PathNode(BaseModel):
@@ -307,7 +468,7 @@ class PathNode(BaseModel):
     evidence_level: str
 ```
 
-### 4.12 DecisionEvent
+### 4.15 DecisionEvent
 
 ```python
 class DecisionEvent(BaseModel):
@@ -317,7 +478,7 @@ class DecisionEvent(BaseModel):
     evidence_level: str
 ```
 
-### 4.13 RiskItem
+### 4.16 RiskItem
 
 ```python
 class RiskItem(BaseModel):
@@ -326,7 +487,31 @@ class RiskItem(BaseModel):
     message: str
 ```
 
-### 4.14 AnalysisState
+### 4.17 GraphNode / GraphEdge / FlowGraph
+
+```python
+class GraphNode(BaseModel):
+    id: str
+    kind: str
+    label: str
+    namespace: str | None = None
+    vrf: str | None = None
+    attrs: dict = {}
+
+class GraphEdge(BaseModel):
+    src: str
+    dst: str
+    relation: str
+    reason: str
+    evidence_level: str = "inferred"
+    attrs: dict = {}
+
+class FlowGraph(BaseModel):
+    nodes: list[GraphNode] = []
+    edges: list[GraphEdge] = []
+```
+
+### 4.18 AnalysisState
 
 ```python
 class AnalysisState(BaseModel):
@@ -342,9 +527,10 @@ class AnalysisState(BaseModel):
     confidence: float = 1.0
     confidence_reasons: list[str] = []
     visited: list[str] = []
+    graph: FlowGraph
 ```
 
-### 4.15 AnalysisResult
+### 4.19 AnalysisResult
 
 ```python
 class AnalysisResult(BaseModel):
@@ -355,6 +541,8 @@ class AnalysisResult(BaseModel):
     confidence: float
     confidence_reasons: list[str]
     summary: str
+    graph: FlowGraph | None = None
+    mermaid: str | None = None
 ```
 
 ## 5. HTTP API 定义

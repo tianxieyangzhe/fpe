@@ -79,11 +79,11 @@ fpe/
 放所有采集函数：
 
 1. `get_interface_context`
-2. `get_ip_rules`
+2. `get_rules`
 3. `get_route`
-4. `resolve_next_hop`
-5. `get_ovs_info`
-6. `check_neighbor`
+4. `get_ovs_bridges`
+5. `get_ovs_flows`
+6. `get_neighbors`
 
 ### 2.4 `analyzer/engine.py`
 

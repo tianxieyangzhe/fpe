@@ -162,6 +162,9 @@ class TestParseOvsFlows:
         assert "ip" in flow1.match
         assert "nw_dst=10.0.0.0/24" in flow1.match
         assert flow1.actions == "output:2"
+        assert flow1.match_fields["ip"] == "true"
+        assert flow1.match_fields["nw_dst"] == "10.0.0.0/24"
+        assert flow1.action_list == ["output:2"]
 
     def test_flow_drop_action(self):
         flows = parse_ovs_flows(OVS_OFCTL_DUMP_FLOWS_BR_INT, "br-int")

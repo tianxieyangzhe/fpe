@@ -34,10 +34,10 @@ async def analyze(req: AnalyzeRequest) -> dict[str, Any]:
 
     analyzer = Analyzer()
     result = await analyzer.analyze(
-        host=exec_ctx.host,
         packet=packet,
         exec_ctx=exec_ctx,
         options=req.options,
+        host=exec_ctx.host,
     )
 
     return result.model_dump()

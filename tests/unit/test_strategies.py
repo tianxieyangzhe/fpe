@@ -62,3 +62,18 @@ class TestJsonRenderer:
         output = render_json(result)
         assert '"status": "COMPLETED"' in output
         assert '"confidence": 0.85' in output
+
+    def test_render_mermaid(self):
+        result = AnalysisResult(
+            status="COMPLETED",
+            path=[],
+            decision_chain=[],
+            risks=[],
+            confidence=0.85,
+            confidence_reasons=[],
+            summary="JSON test",
+            mermaid="flowchart LR\n  A-->B",
+        )
+        output = render_text(result)
+        assert "Mermaid:" in output
+        assert "flowchart LR" in output
