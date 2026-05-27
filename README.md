@@ -1,6 +1,6 @@
 # FPE — Flow Path Explorer
 
-基于厂商模型 API 的网络链路分析 AI 应用。
+  基于厂商模型 API 的网络链路分析 AI 应用。
 
 ## 概述
 
@@ -94,7 +94,7 @@ python -m fpe.mcp.server --mode stdio
 {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
 → {"jsonrpc": "2.0", "id": 1, "result": {"tools": [...]}}
 
-{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "fpe.analyze_flow", "arguments": {"packet": {"src_ip": "10.0.0.2", "dst_ip": "8.8.8.8", "ingress_if": "lan1"}}}}
+{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "fpe_analyze_flow", "arguments": {"packet": {"src_ip": "10.0.0.2", "dst_ip": "8.8.8.8", "ingress_if": "lan1"}}}}
 → {"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "text", "text": "..."}]}}
 ```
 
@@ -128,7 +128,7 @@ curl -X POST http://localhost:8000/message?session_id=<uuid> \
     "id": 1,
     "method": "tools/call",
     "params": {
-      "name": "fpe.analyze_flow",
+      "name": "fpe_analyze_flow",
       "arguments": {
         "packet": {"src_ip": "10.0.0.2", "dst_ip": "8.8.8.8", "ingress_if": "lan1"}
       }
@@ -156,17 +156,17 @@ curl -X POST http://localhost:8000/message \
 
 | 工具 | 说明 |
 |------|------|
-| `fpe.analyze_flow` | OVS 优先的完整链路分析，输出结构化路径、风险和 Mermaid 图 |
-| `fpe.get_interface_context` | 接口信息 |
-| `fpe.get_rule` | IP 策略路由规则，可按报文筛选匹配规则 |
-| `fpe.get_route` | 路由表 |
-| `fpe.get_neighbor` | 邻居表 |
-| `fpe.get_ovs_bridges` | OVS 网桥/端口信息，可附带每桥 flows |
-| `fpe.get_ovs_flows` | OVS flows 信息，可按 ingress/报文筛选候选 flow |
+| `fpe_analyze_flow` | OVS 优先的完整链路分析，输出结构化路径、风险和 Mermaid 图 |
+| `fpe_get_interface_context` | 接口信息 |
+| `fpe_get_rule` | IP 策略路由规则，可按报文筛选匹配规则 |
+| `fpe_get_route` | 路由表 |
+| `fpe_get_neighbor` | 邻居表 |
+| `fpe_get_ovs_bridges` | OVS 网桥/端口信息，可附带每桥 flows |
+| `fpe_get_ovs_flows` | OVS flows 信息，可按 ingress/报文筛选候选 flow |
 
 #### 工具使用说明
 
-##### `fpe.analyze_flow`
+##### `fpe_analyze_flow`
 
 目的：
 
@@ -195,7 +195,7 @@ curl -X POST http://localhost:8000/message \
 4. `graph`：前端可直接消费的图结构。
 5. `mermaid`：可直接渲染的链路图文本。
 
-##### `fpe.get_interface_context`
+##### `fpe_get_interface_context`
 
 目的：
 
@@ -210,7 +210,7 @@ curl -X POST http://localhost:8000/message \
 4. `role`：按 `underlay-uplink`、`bridge-port`、`vrf-member` 等过滤。
 5. `state`：按 `UP` / `DOWN` 过滤。
 
-##### `fpe.get_rule`
+##### `fpe_get_rule`
 
 目的：
 
@@ -224,7 +224,7 @@ curl -X POST http://localhost:8000/message \
 3. `table`：只看某个路由表对应的规则。
 4. `packet`：传入报文后，返回 `matched_rules` 与 `selected_rule`。
 
-##### `fpe.get_route`
+##### `fpe_get_route`
 
 目的：
 
@@ -240,7 +240,7 @@ curl -X POST http://localhost:8000/message \
 4. `device`：只看通过某个设备转发的路由。
 5. `best_only`：只返回最优路由。
 
-##### `fpe.get_neighbor`
+##### `fpe_get_neighbor`
 
 目的：
 
@@ -255,7 +255,7 @@ curl -X POST http://localhost:8000/message \
 4. `state`：按 `REACHABLE`、`FAILED` 等过滤。
 5. `reachable_only`：只返回可达邻居。
 
-##### `fpe.get_ovs_bridges`
+##### `fpe_get_ovs_bridges`
 
 目的：
 
@@ -270,7 +270,7 @@ curl -X POST http://localhost:8000/message \
 3. `interface`：只返回包含该接口的桥。
 4. `include_flows`：一并附带每个桥上的 flows。
 
-##### `fpe.get_ovs_flows`
+##### `fpe_get_ovs_flows`
 
 目的：
 

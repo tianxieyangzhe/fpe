@@ -138,7 +138,6 @@ async def _handle_stdio_message(
 
 def run_stdio(registry: ToolRegistry) -> None:
     """Run MCP server in stdio mode (blocking)."""
-    logger.info("MCP stdio server starting")
     asyncio.run(_run_stdio(registry))
 
 

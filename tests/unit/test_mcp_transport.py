@@ -28,8 +28,8 @@ class TestStdioTransport:
         assert response["id"] == "1"
         assert len(response["result"]["tools"]) >= 1
         tool_names = [t["name"] for t in response["result"]["tools"]]
-        assert "fpe.analyze_flow" in tool_names
-        assert "fpe.resolve_next_hop" not in tool_names
+        assert "fpe_analyze_flow" in tool_names
+        assert "fpe_resolve_next_hop" not in tool_names
 
         # Verify inputSchema is populated for each tool
         for tool in response["result"]["tools"]:
@@ -40,12 +40,12 @@ class TestStdioTransport:
             assert isinstance(schema["required"], list)
 
         # Verify specific tool has expected parameters
-        analyze = next(t for t in response["result"]["tools"] if t["name"] == "fpe.analyze_flow")
+        analyze = next(t for t in response["result"]["tools"] if t["name"] == "fpe_analyze_flow")
         assert "packet" in analyze["inputSchema"]["properties"]
         assert "packet" in analyze["inputSchema"]["required"]
         assert "exec_ctx" in analyze["inputSchema"]["properties"]
 
-        iface_tool = next(t for t in response["result"]["tools"] if t["name"] == "fpe.get_interface_context")
+        iface_tool = next(t for t in response["result"]["tools"] if t["name"] == "fpe_get_interface_context")
         assert "iface" in iface_tool["inputSchema"]["properties"]
         assert "namespace" in iface_tool["inputSchema"]["properties"]
         assert "vrf" in iface_tool["inputSchema"]["properties"]
@@ -146,7 +146,7 @@ class TestSseSimplifiedMode:
             assert data["jsonrpc"] == "2.0"
             assert len(data["result"]["tools"]) >= 1
             names = [t["name"] for t in data["result"]["tools"]]
-            assert "fpe.analyze_flow" in names
+            assert "fpe_analyze_flow" in names
 
     def test_simplified_tools_call(self, registry):
         """Simplified POST /message returns tools/call response."""
@@ -161,7 +161,7 @@ class TestSseSimplifiedMode:
                     "id": 3,
                     "method": "tools/call",
                     "params": {
-                        "name": "fpe.analyze_flow",
+                        "name": "fpe_analyze_flow",
                         "arguments": {
                             "packet": {"src_ip": "10.0.0.2", "dst_ip": "8.8.8.8"},
                         },

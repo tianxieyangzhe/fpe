@@ -178,12 +178,12 @@ class TestAnalysisState:
 
 class TestToolResult:
     def test_success(self):
-        tr = ToolResult(ok=True, tool="fpe.analyze_flow")
+        tr = ToolResult(ok=True, tool="fpe_analyze_flow")
         assert tr.ok is True
         assert tr.error is None
 
     def test_error(self):
-        tr = ToolResult(ok=False, tool="fpe.analyze_flow", error="something went wrong")
+        tr = ToolResult(ok=False, tool="fpe_analyze_flow", error="something went wrong")
         assert tr.ok is False
         assert tr.error == "something went wrong"
 

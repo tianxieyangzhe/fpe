@@ -39,10 +39,10 @@ Specific requirements:
 
 1. Every OVS hop in the conclusion must cite the concrete flow(s) involved, identified by at least: `bridge`, `table`, key `match` fields, and `actions`. Include `cookie` or flow index when available.
 2. Do not stop at "traffic enters br-int" or "wan1 port is up". Always continue to "which flow in which table on which bridge decides what happens, and what its actions are".
-3. If `fpe.analyze_flow` returns an OVS-related path, immediately follow up with `fpe.get_ovs_flows` to materialize the exact flow entries referenced by that path. Do not rely on the analyzer summary alone.
+3. If `fpe_analyze_flow` returns an OVS-related path, immediately follow up with `fpe_get_ovs_flows` to materialize the exact flow entries referenced by that path. Do not rely on the analyzer summary alone.
 4. If the exact matched flow cannot be determined, explicitly label entries as `candidate flow` and list every candidate flow with full `table / match / actions`, plus the reason exact match is unproven.
 5. Never describe OVS behavior using only bridge name, port name, ofport, or VLAN tag. These are attributes; the flow is the decision.
-6. Counter-only evidence (`n_packets > 0`) is not enough by itself. Always pair it with the concrete flow's match and action.
+6. Counter-only evidence (`n_packets > 0`) is not enough by itself, and must never be used as the primary basis for inferring a match. Counters are validation signals only — they confirm an already-identified path during live traffic, they do not establish which flow or bucket was selected. Always pair counter evidence with the concrete flow's `match` and `actions`. A zero counter does not disprove a path; the environment may have no live traffic at analysis time.
 7. Multi-table pipelines must be expanded table by table. Do not collapse `table=0 -> ... -> output` into a single arrow; each table transition must show the flow that performed it (or be marked as an inferred candidate per table).
 8. When `resubmit`, `goto_table`, `learn`, `conjunction`, `ct`, `output:NXM`, `controller`, or `group:<id>` actions are involved, the report must name the action explicitly and trace the next table/flow/group.
 9. If any flow action references a group (e.g. `group:1`, `actions=group:N`), the analysis MUST also dump and inspect that group's buckets — do not stop at the flow that points to the group.
@@ -71,7 +71,7 @@ If key packet fields are missing, say what is assumed before reasoning from tool
 
 First choice:
 
-- `fpe.analyze_flow`
+- `fpe_analyze_flow`
 
 Use it when the goal is any of:
 
@@ -115,7 +115,7 @@ Use raw tools only when one part of the main path is still unclear.
 
 Use:
 
-- `fpe.get_interface_context`
+- `fpe_get_interface_context`
 
 Questions it answers:
 
@@ -136,7 +136,7 @@ Typical filters:
 
 Use:
 
-- `fpe.get_ovs_bridges`
+- `fpe_get_ovs_bridges`
 
 Questions it answers:
 
@@ -165,7 +165,7 @@ If you also need the bridge's flow inventory:
 
 Use:
 
-- `fpe.get_ovs_flows`
+- `fpe_get_ovs_flows`
 
 This is the main drill-down tool for OVS dataplane reasoning.
 
@@ -205,7 +205,7 @@ Use when any matched or candidate flow's `actions` contains `group:<id>`, or whe
 
 Tool / commands:
 
-- `fpe.get_ovs_groups` (preferred MCP tool when available)
+- `fpe_get_ovs_groups` (preferred MCP tool when available)
 - Fallback shell evidence: `ovs-ofctl -O OpenFlow15 dump-groups <bridge>` and `ovs-ofctl -O OpenFlow15 dump-group-stats <bridge> [group_id]`
 
 Questions it answers:
@@ -249,7 +249,7 @@ Hard rules for group reasoning:
 
 Use:
 
-- `fpe.get_rule`
+- `fpe_get_rule`
 
 Only after evidence suggests traffic entered kernel L3.
 
@@ -283,7 +283,7 @@ Read:
 
 Use:
 
-- `fpe.get_route`
+- `fpe_get_route`
 
 Questions it answers:
 
@@ -315,7 +315,7 @@ If validating a specific egress:
 
 Use:
 
-- `fpe.get_neighbor`
+- `fpe_get_neighbor`
 
 Questions it answers:
 
@@ -337,23 +337,23 @@ Preferred call:
 
 If the user asks "why didn't traffic go out as expected?":
 
-1. Call `fpe.analyze_flow`.
+1. Call `fpe_analyze_flow`.
 2. If result shows OVS drop or OVS mismatch, stay in OVS tools.
 3. If result shows kernel handoff, then inspect `get_rule`, `get_route`, `get_neighbor`.
 
 If the user asks "which flow handled this traffic?":
 
-1. Call `fpe.get_ovs_flows` with `ingress_if` plus `packet`.
+1. Call `fpe_get_ovs_flows` with `ingress_if` plus `packet`.
 2. If too broad, add `table`, `vlan_id`, `protocol`, ports, or `active_only`.
 
 If the user asks "which bridge owns this interface?":
 
-1. Call `fpe.get_ovs_bridges` with `interface`.
+1. Call `fpe_get_ovs_bridges` with `interface`.
 2. If still unclear, confirm interface role via `get_interface_context`.
 
 If the user asks "is this a route problem or an OVS problem?":
 
-1. Start with `fpe.analyze_flow`.
+1. Start with `fpe_analyze_flow`.
 2. If path stops before kernel, classify as OVS-side.
 3. If path reaches kernel and then diverges, classify as L3-side.
 
@@ -455,9 +455,9 @@ as proof that the current packet matched that exact flow or that the listed grou
 
 For OVS sections:
 
-1. Prefer `matched_flows` from `fpe.get_ovs_flows` when available.
+1. Prefer `matched_flows` from `fpe_get_ovs_flows` when available.
 2. If exact packet match is unavailable, label the chain as `candidate flow path` and still enumerate each candidate flow's full `table / match / actions`.
-3. For every flow that uses `group:<id>`, include a sub-listing of the group's buckets from `fpe.get_ovs_groups` (or `ovs-ofctl dump-groups`) with `type`, `weight`, `watch_port`, and `actions`.
+3. For every flow that uses `group:<id>`, include a sub-listing of the group's buckets from `fpe_get_ovs_groups` (or `ovs-ofctl dump-groups`) with `type`, `weight`, `watch_port`, and `actions`.
 4. Distinguish:
    - `active flow`
    - `candidate matching flow`
@@ -745,7 +745,7 @@ Preferred labels:
 
 When the goal is a flow diagram:
 
-1. Prefer `fpe.analyze_flow` first because it already returns `graph` and `mermaid`.
+1. Prefer `fpe_analyze_flow` first because it already returns `graph` and `mermaid`.
 2. Use raw tools only to refine uncertain segments.
 3. Keep graph narrative aligned with forwarding order:
    - ingress interface
@@ -755,6 +755,64 @@ When the goal is a flow diagram:
    - action result
    - kernel rule/route/neighbor if present
    - final egress
+
+## Counter usage rule: counters validate, never infer
+
+Packet and byte counters — whether on OVS flows, OVS ports, OVS groups, kernel interfaces, or route entries — are **validation signals only**.
+
+They must never be used as the primary basis for inferring which path traffic took, which flow was matched, or which group bucket was selected.
+
+### Why
+
+The target environment is not guaranteed to have live traffic at the time of analysis. A counter value of zero does not mean the path is wrong. A counter value greater than zero does not mean the current packet matched that specific entry — it only means some traffic incremented it at some point in the past.
+
+### What counters can do
+
+| Use | Allowed |
+|-----|---------|
+| Confirm that a previously inferred path is active during a live test | ✅ Yes |
+| Raise or lower confidence in a candidate flow after the flow is already identified by match fields | ✅ Yes |
+| Distinguish between two equally plausible candidate flows when both match fields and counters are compared together | ✅ Yes (with explicit caveat) |
+| Serve as the sole reason to conclude a flow was matched | ❌ No |
+| Serve as the sole reason to conclude a group bucket was selected | ❌ No |
+| Substitute for missing `match` / `actions` evidence | ❌ No |
+| Prove a path is correct when the environment has no current traffic | ❌ No |
+
+### Required wording when counters are cited
+
+When citing a counter as supporting evidence, always pair it with the flow's `match` and `actions`, and use one of these labels:
+
+- `Counter supports inference` — the flow was already identified by match fields; the counter is consistent with it being active.
+- `Counter is inconclusive` — the counter is non-zero but the exact packet match is unproven; the flow remains a candidate.
+- `Counter is zero; path not falsified` — zero counter in a static snapshot does not disprove the path.
+
+Never write:
+
+- `n_packets > 0, therefore this flow handled the traffic`
+- `counter is incrementing, so this bucket is selected`
+- `no counter activity, so traffic did not take this path`
+
+### Impact on path conclusions
+
+If the only evidence for a forwarding hop is a non-zero counter, that hop must be labeled `Unconfirmed` in the report, not `Confirmed` or `Inferred`.
+
+The path conclusion must be built from:
+
+1. Flow `match` fields that align with the packet definition
+2. Flow `actions` that explain the next hop
+3. Topology evidence (bridge membership, port role, namespace, VRF)
+4. Rule and route lookup results when kernel L3 is involved
+
+Counters may then be listed as secondary corroboration, clearly labeled as such.
+
+### Impact on monitoring guidance
+
+Because counters are validation signals, the monitoring section of a report should instruct the operator to watch counters **during a live test**, not treat current snapshot counter values as proof.
+
+Use wording like:
+
+- `Generate test traffic, then check whether this flow's counter increments — that would validate the inferred path.`
+- `A zero counter in the current snapshot does not disprove this path; the environment may have no active traffic right now.`
 
 ## Common mistakes to avoid
 
@@ -768,3 +826,6 @@ When the goal is a flow diagram:
 8. Describing OVS behavior at bridge/port/table granularity without naming the specific flow's `match` and `actions`.
 9. Stopping at a flow whose action is `group:<id>` without dumping that group's buckets and identifying the selected (or candidate) bucket.
 10. Treating group existence or bucket existence as proof of selection without `watch_port` liveness (for `ff`) or per-bucket counter evidence (for `select`).
+11. Using a non-zero counter as the primary reason to conclude a flow was matched or a bucket was selected — counters validate, they do not infer.
+12. Treating a zero counter as proof that traffic did not take a path — the environment may simply have no live traffic at analysis time.
+13. Skipping `match` / `actions` evidence and substituting counter activity as the forwarding explanation.

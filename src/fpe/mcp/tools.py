@@ -94,9 +94,9 @@ class ToolRegistry:
 # ── Tool handlers ────────────────────────────────────────────────────
 
 class AnalyzeFlowHandler:
-    """Handler for ``fpe.analyze_flow`` — complete flow analysis."""
+    """Handler for ``fpe_analyze_flow`` — complete flow analysis."""
 
-    name = "fpe.analyze_flow"
+    name = "fpe_analyze_flow"
     description = "Complete flow analysis for a given packet"
 
     def input_schema(self) -> dict[str, Any]:
@@ -163,9 +163,9 @@ class AnalyzeFlowHandler:
 
 
 class GetInterfaceContextHandler:
-    """Handler for ``fpe.get_interface_context``."""
+    """Handler for ``fpe_get_interface_context``."""
 
-    name = "fpe.get_interface_context"
+    name = "fpe_get_interface_context"
     description = "Get network interface context and attributes from one or all namespaces"
 
     def input_schema(self) -> dict[str, Any]:
@@ -213,9 +213,9 @@ class GetInterfaceContextHandler:
 
 
 class GetRuleHandler:
-    """Handler for ``fpe.get_rule`` — IP policy routing rules."""
+    """Handler for ``fpe_get_rule`` — IP policy routing rules."""
 
-    name = "fpe.get_rule"
+    name = "fpe_get_rule"
     description = "Get IP policy routing rules from one or all namespaces"
 
     def input_schema(self) -> dict[str, Any]:
@@ -328,9 +328,9 @@ class GetRuleHandler:
 
 
 class GetRouteHandler:
-    """Handler for ``fpe.get_route`` — routing table entries."""
+    """Handler for ``fpe_get_route`` — routing table entries."""
 
-    name = "fpe.get_route"
+    name = "fpe_get_route"
     description = "Get routing table entries from one or all namespaces"
 
     def input_schema(self) -> dict[str, Any]:
@@ -403,9 +403,9 @@ class GetRouteHandler:
 
 
 class GetNeighborHandler:
-    """Handler for ``fpe.get_neighbor`` — neighbor (ARP/NDP) table."""
+    """Handler for ``fpe_get_neighbor`` — neighbor (ARP/NDP) table."""
 
-    name = "fpe.get_neighbor"
+    name = "fpe_get_neighbor"
     description = "Get neighbor (ARP/NDP) table entries from one or all namespaces"
 
     def input_schema(self) -> dict[str, Any]:
@@ -472,9 +472,9 @@ class GetNeighborHandler:
 
 
 class GetOvsBridgesHandler:
-    """Handler for ``fpe.get_ovs_bridges`` — OVS bridge topology."""
+    """Handler for ``fpe_get_ovs_bridges`` — OVS bridge topology."""
 
-    name = "fpe.get_ovs_bridges"
+    name = "fpe_get_ovs_bridges"
     description = "Get Open vSwitch (OVS) bridge topology including ports, VLAN config, and datapath metadata"
 
     def input_schema(self) -> dict[str, Any]:
@@ -538,9 +538,9 @@ class GetOvsBridgesHandler:
 
 
 class GetOvsFlowsHandler:
-    """Handler for ``fpe.get_ovs_flows`` — OpenFlow flow table entries."""
+    """Handler for ``fpe_get_ovs_flows`` — OpenFlow flow table entries."""
 
-    name = "fpe.get_ovs_flows"
+    name = "fpe_get_ovs_flows"
     description = "Get OpenFlow flow table entries from OVS bridges"
 
     def input_schema(self) -> dict[str, Any]:
@@ -695,9 +695,9 @@ class GetOvsFlowsHandler:
 
 
 class GetOvsGroupsHandler:
-    """Handler for ``fpe.get_ovs_groups`` — OVS group table entries."""
+    """Handler for ``fpe_get_ovs_groups`` — OVS group table entries."""
 
-    name = "fpe.get_ovs_groups"
+    name = "fpe_get_ovs_groups"
     description = "Query OVS group tables for load balancing, failover, and multicast"
 
     def input_schema(self) -> dict[str, Any]:
