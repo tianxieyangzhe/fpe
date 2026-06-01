@@ -39,7 +39,7 @@ Specific requirements:
 
 1. Every OVS hop in the conclusion must cite the concrete flow(s) involved, identified by at least: `bridge`, `table`, key `match` fields, and `actions`. Include `cookie` or flow index when available.
 2. Do not stop at "traffic enters br-int" or "wan1 port is up". Always continue to "which flow in which table on which bridge decides what happens, and what its actions are".
-3. If `fpe_analyze_flow` returns an OVS-related path, immediately follow up with `fpe_get_ovs_flows` to materialize the exact flow entries referenced by that path. Do not rely on the analyzer summary alone.
+3. If `get_path_segments` returns an OVS-related path, immediately follow up with `get_ovs_flows` to materialize the exact flow entries referenced by that path. Do not rely on the analyzer summary alone.
 4. If the exact matched flow cannot be determined, explicitly label entries as `candidate flow` and list every candidate flow with full `table / match / actions`, plus the reason exact match is unproven.
 5. Never describe OVS behavior using only bridge name, port name, ofport, or VLAN tag. These are attributes; the flow is the decision.
 6. Counter-only evidence (`n_packets > 0`) is not enough by itself, and must never be used as the primary basis for inferring a match. Counters are validation signals only — they confirm an already-identified path during live traffic, they do not establish which flow or bucket was selected. Always pair counter evidence with the concrete flow's `match` and `actions`. A zero counter does not disprove a path; the environment may have no live traffic at analysis time.
@@ -55,25 +55,26 @@ Before calling any detailed tool, identify as many of these fields as possible:
 
 - `src_ip`
 - `dst_ip`
-- `ingress_if`
-- `protocol`
+- `proto`
 - `src_port`
 - `dst_port`
+- `namespace`
 - `vlan_id`
 - `tunnel_id`
 - `fwmark`
-- `namespace`
-- `vrf`
+
+`in_port` and `src_mac`/`dst_mac` are derived by `resolve_packet` from the knowledge base.
 
 If key packet fields are missing, say what is assumed before reasoning from tools.
 
 ### 2. Prefer the main analyzer first
 
-First choice:
+First call `resolve_packet` to complete the packet, then `get_path_segments` to compute all paths:
 
-- `fpe_analyze_flow`
+- `resolve_packet` — 补全报文字段（src_mac, dst_mac, in_port, vlan 等）
+- `get_path_segments` — 计算完整路径树，返回 WalkResult
 
-Use it when the goal is any of:
+Use them when the goal is any of:
 
 - explain actual forwarding path
 - find where traffic deviates
@@ -84,28 +85,19 @@ Minimum useful input:
 
 ```json
 {
-  "packet": {
-    "src_ip": "10.0.0.2",
-    "dst_ip": "8.8.8.8",
-    "ingress_if": "lan1"
-  },
-  "exec_ctx": {
-    "namespace": "ns_app",
-    "vrf": "vrf-app"
-  }
+  "src_ip": "10.0.0.2",
+  "dst_ip": "8.8.8.8",
+  "namespace": "ns_app"
 }
 ```
 
 Read these fields first from the result:
 
-- `status`
-- `summary`
-- `path`
-- `risks`
-- `graph`
-- `mermaid`
+- `Status` — complete/drop/uncertain/incomplete
+- `Leaves` — all path leaves, each with Segments and Outcome
+- `Packet` — the resolved packet with completed fields
 
-If `analyze_flow` already explains the issue clearly, do not fan out into many raw tools.
+If `get_path_segments` already explains the issue clearly, do not fan out into many raw tools.
 
 ### 3. Drill down only to answer a specific uncertainty
 
@@ -115,7 +107,7 @@ Use raw tools only when one part of the main path is still unclear.
 
 Use:
 
-- `fpe_get_interface_context`
+- `get_interfaces`
 
 Questions it answers:
 
@@ -136,7 +128,7 @@ Typical filters:
 
 Use:
 
-- `fpe_get_ovs_bridges`
+- `get_ovs_bridges`
 
 Questions it answers:
 
@@ -165,7 +157,7 @@ If you also need the bridge's flow inventory:
 
 Use:
 
-- `fpe_get_ovs_flows`
+- `get_ovs_flows`
 
 This is the main drill-down tool for OVS dataplane reasoning.
 
@@ -179,15 +171,8 @@ Preferred call shape:
 
 ```json
 {
-  "ingress_if": "lan1",
-  "packet": {
-    "src_ip": "10.0.0.2",
-    "dst_ip": "8.8.8.8",
-    "ingress_if": "lan1",
-    "protocol": "icmp",
-    "vlan_id": 10
-  },
-  "active_only": true
+  "bridge": "br-wan1",
+  "table": 0
 }
 ```
 
@@ -205,7 +190,7 @@ Use when any matched or candidate flow's `actions` contains `group:<id>`, or whe
 
 Tool / commands:
 
-- `fpe_get_ovs_groups` (preferred MCP tool when available)
+- `get_ovs_groups` (preferred MCP tool when available)
 - Fallback shell evidence: `ovs-ofctl -O OpenFlow15 dump-groups <bridge>` and `ovs-ofctl -O OpenFlow15 dump-group-stats <bridge> [group_id]`
 
 Questions it answers:
@@ -245,91 +230,55 @@ Hard rules for group reasoning:
 5. Group buckets that themselves contain `resubmit`, `goto_table`, `output:`, or another `group:` action must be traced further per the multi-table rule above.
 6. Treat group existence alone as insufficient evidence; always pair it with the upstream flow that selects it and the downstream action of the chosen bucket.
 
-#### D. Need kernel policy routing explanation
+#### D. Need kernel route lookup
 
 Use:
 
-- `fpe_get_rule`
+- `get_routes`
 
-Only after evidence suggests traffic entered kernel L3.
-
-Questions it answers:
-
-- Which rules match this packet?
-- Which rule wins?
-- Which table should be consulted next?
-
-Preferred call:
-
-```json
-{
-  "namespace": "ns_app",
-  "vrf": "vrf-app",
-  "packet": {
-    "src_ip": "10.0.0.2",
-    "dst_ip": "8.8.8.8",
-    "ingress_if": "lan1",
-    "fwmark": "0x10"
-  }
-}
-```
-
-Read:
-
-- `selected_rule`
-- `matched_rules`
-
-#### E. Need final route choice
-
-Use:
-
-- `fpe_get_route`
+Only after evidence suggests traffic entered kernel L3. IP policy routing rules are handled internally by the walker during path computation.
 
 Questions it answers:
 
 - What is the best route for this destination?
-- Which egress device is actually selected?
+- Which egress device is selected?
+- Which routing tables contain matching entries?
 
 Preferred call:
 
 ```json
 {
   "namespace": "ns_app",
-  "vrf": "vrf-app",
-  "dst_ip": "8.8.8.8",
-  "best_only": true
+  "table": "main"
 }
 ```
 
-If validating a specific egress:
+To query a specific destination:
 
 ```json
 {
   "namespace": "ns_app",
-  "vrf": "vrf-app",
-  "device": "wan0"
+  "table": "main"
 }
 ```
 
-#### F. Need next-hop reachability confirmation
+#### E. Need next-hop reachability confirmation
 
 Use:
 
-- `fpe_get_neighbor`
+- `get_neighbors`
 
 Questions it answers:
 
-- Does the next hop exist?
-- Is it reachable or failed?
+- Does the next hop have an ARP/NDP entry?
+- Is it reachable?
 
 Preferred call:
 
 ```json
 {
   "namespace": "ns_app",
-  "vrf": "vrf-app",
-  "device": "wan0",
-  "target_ip": "192.168.1.1"
+  "ip": "192.168.1.1"
 }
 ```
 
@@ -337,23 +286,23 @@ Preferred call:
 
 If the user asks "why didn't traffic go out as expected?":
 
-1. Call `fpe_analyze_flow`.
+1. Call `get_path_segments`.
 2. If result shows OVS drop or OVS mismatch, stay in OVS tools.
-3. If result shows kernel handoff, then inspect `get_rule`, `get_route`, `get_neighbor`.
+3. If result shows kernel handoff, then inspect `get_routes`, `get_neighbors`.
 
 If the user asks "which flow handled this traffic?":
 
-1. Call `fpe_get_ovs_flows` with `ingress_if` plus `packet`.
-2. If too broad, add `table`, `vlan_id`, `protocol`, ports, or `active_only`.
+1. Call `get_ovs_flows` with `bridge` and optionally `table`.
+2. If too broad, narrow by specific table.
 
 If the user asks "which bridge owns this interface?":
 
-1. Call `fpe_get_ovs_bridges` with `interface`.
-2. If still unclear, confirm interface role via `get_interface_context`.
+1. Call `get_ovs_bridges` to list all bridges.
+2. If still unclear, confirm interface role via `get_interfaces`.
 
 If the user asks "is this a route problem or an OVS problem?":
 
-1. Start with `fpe_analyze_flow`.
+1. Start with `get_path_segments`.
 2. If path stops before kernel, classify as OVS-side.
 3. If path reaches kernel and then diverges, classify as L3-side.
 
@@ -455,9 +404,9 @@ as proof that the current packet matched that exact flow or that the listed grou
 
 For OVS sections:
 
-1. Prefer `matched_flows` from `fpe_get_ovs_flows` when available.
+1. Prefer `matched_flows` from `get_ovs_flows` when available.
 2. If exact packet match is unavailable, label the chain as `candidate flow path` and still enumerate each candidate flow's full `table / match / actions`.
-3. For every flow that uses `group:<id>`, include a sub-listing of the group's buckets from `fpe_get_ovs_groups` (or `ovs-ofctl dump-groups`) with `type`, `weight`, `watch_port`, and `actions`.
+3. For every flow that uses `group:<id>`, include a sub-listing of the group's buckets from `get_ovs_groups` (or `ovs-ofctl dump-groups`) with `type`, `weight`, `watch_port`, and `actions`.
 4. Distinguish:
    - `active flow`
    - `candidate matching flow`
@@ -470,16 +419,16 @@ Use this wording model:
 - `Candidate flow`: if inferred from ingress port, table progression, and active counters.
 - `Background active flow`: if merely observed in the bridge.
 
-### Rule and route reporting rules
+### Route reporting rules
 
-Do not collapse Linux routing behavior into a single `selected_rule` statement if the actual result depends on fallthrough semantics.
+Do not assume Linux routing behavior is a single step. IP rules and multiple routing tables
+are resolved internally by the walker during `get_path_segments` computation.
 
-If `local` is selected first but the destination is not a local address, write:
+If the local table is matched first but the destination is not a local address, write:
 
-- `Confirmed`: rule priority 0 points to local table
-- `Inferred`: destination is not resolved in local table, so lookup continues per kernel behavior
+- `Inferred`: destination is not resolved in local table, lookup continues per kernel behavior
 
-Do not present this as if the tool already executed a full rule-walk unless it did.
+Do not present this as if the tool already executed a full rule-walk unless the path segments confirm it.
 
 ### Bridge/VLAN reporting rules
 
@@ -512,7 +461,7 @@ If one tool says incomplete but the combined evidence suggests a likely path:
 
 Use this pattern:
 
-- `Tool result`: analyze_flow returned `INCOMPLETE`
+- `Tool result`: get_path_segments returned `incomplete`
 - `Likely path`: ...
 - `Reason for discrepancy`: ...
 - `Residual uncertainty`: ...
@@ -745,7 +694,7 @@ Preferred labels:
 
 When the goal is a flow diagram:
 
-1. Prefer `fpe_analyze_flow` first because it already returns `graph` and `mermaid`.
+1. Prefer `get_path_segments` first because it already returns `graph` and `mermaid`.
 2. Use raw tools only to refine uncertain segments.
 3. Keep graph narrative aligned with forwarding order:
    - ingress interface
@@ -816,9 +765,9 @@ Use wording like:
 
 ## Common mistakes to avoid
 
-1. Starting with `get_route` before knowing whether OVS forwarded to kernel.
+1. Starting with `get_routes` before knowing whether OVS forwarded to kernel.
 2. Querying all flows on all bridges without first finding the ingress bridge.
-3. Ignoring `namespace` / `vrf`.
+3. Ignoring `namespace`.
 4. Treating broad collected data as proof without packet-specific matching.
 5. Returning raw tool results without stating the actual path conclusion.
 6. Calling a path `confirmed` when the report is really based on active-flow inference.
