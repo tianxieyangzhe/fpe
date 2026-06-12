@@ -12,7 +12,6 @@ import (
 func runOvsOfctl(e Executor, cmd string) (string, error) {
 	out, err := e.Run(cmd)
 	if err != nil {
-		logs.Warnf("ovs-ofctl failed, retrying with -Oopenflow13: %v", err)
 		out, err = e.Run(cmd + " -Oopenflow13")
 	}
 	return out, err

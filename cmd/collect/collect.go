@@ -6,6 +6,9 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yangshuai/fpe/internal/collector"
+	"github.com/yangshuai/fpe/internal/collector/kernel"
+	kernelnetlink "github.com/yangshuai/fpe/internal/collector/kernel/netlink"
+	"github.com/yangshuai/fpe/internal/collector/kernel/remote"
 	"github.com/yangshuai/fpe/internal/db"
 	"github.com/yangshuai/fpe/internal/logs"
 )
@@ -21,6 +24,7 @@ func NewCommand() *cobra.Command {
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var exec collector.Executor
+			var kernelCollector kernel.Collector
 			var host string
 
 			if sshHost != "" {
@@ -30,9 +34,11 @@ func NewCommand() *cobra.Command {
 				}
 				defer e.Close()
 				exec = e
+				kernelCollector = remote.New(e)
 				host = sshHost
 			} else {
 				exec = &collector.LocalExecutor{}
+				kernelCollector = kernelnetlink.New()
 				h, _ := os.Hostname()
 				host = h
 			}
@@ -53,12 +59,12 @@ func NewCommand() *cobra.Command {
 			logs.Infof("collecting host=%s db=%s", host, dbOutput)
 
 			// Collect root namespace
-			collectNamespace(exec, d, "", "")
+			collectNamespace(kernelCollector, d, "", "")
 
 			// Discover all network namespaces from root
-			allNS, err := collector.CollectNetNS(exec)
-			if err != nil {
-				logs.Warnf("netns list failed: %v", err)
+			allNS, nsErr := kernelCollector.Namespaces()
+			if nsErr != nil {
+				logs.Warnf("netns list failed: %v", nsErr)
 			}
 
 			// Check if ANPOSNS exists
@@ -72,7 +78,7 @@ func NewCommand() *cobra.Command {
 
 			if anposnsFound {
 				logs.Infof("collecting namespace=%s", anposns)
-				collectNamespace(exec, d, anposns, "")
+				collectNamespace(kernelCollector, d, anposns, "")
 			} else {
 				logs.Warnf("namespace %s not found, skipping", anposns)
 			}
@@ -126,17 +132,16 @@ func NewCommand() *cobra.Command {
 	return cmd
 }
 
-// collectNamespace collects all four categories of network data for a namespace,
-// then discovers VRF L3 master devices within the namespace and collects
-// VRF-specific routes, rules, and neighbors.
-func collectNamespace(exec collector.Executor, d *db.DB, namespace, vrf string) {
+// collectNamespace collects kernel networking data for a namespace, then
+// discovers VRF L3 master devices and collects VRF-specific data.
+func collectNamespace(k kernel.Collector, d *db.DB, namespace, vrf string) {
 	ns := namespace
 	if ns == "" {
 		ns = "root"
 	}
 
 	// 1. Interfaces
-	ifaces, err := collector.CollectInterfaces(exec, namespace)
+	ifaces, err := k.Interfaces(namespace)
 	if err != nil {
 		logs.Warnf("interfaces collection failed ns=%s: %v", ns, err)
 	}
@@ -147,7 +152,7 @@ func collectNamespace(exec collector.Executor, d *db.DB, namespace, vrf string) 
 	logs.Infof("collected interfaces ns=%s count=%d", ns, len(ifaces))
 
 	// 2. Rules
-	rules, err := collector.CollectRules(exec, namespace)
+	rules, err := k.Rules(namespace)
 	if err != nil {
 		logs.Warnf("rules collection failed ns=%s: %v", ns, err)
 	}
@@ -158,7 +163,7 @@ func collectNamespace(exec collector.Executor, d *db.DB, namespace, vrf string) 
 	logs.Infof("collected rules ns=%s count=%d", ns, len(rules))
 
 	// 3. Routes
-	routes, err := collector.CollectRoutes(exec, namespace)
+	routes, err := k.Routes(namespace)
 	if err != nil {
 		logs.Warnf("routes collection failed ns=%s: %v", ns, err)
 	}
@@ -169,7 +174,7 @@ func collectNamespace(exec collector.Executor, d *db.DB, namespace, vrf string) 
 	logs.Infof("collected routes ns=%s count=%d", ns, len(routes))
 
 	// 4. Neighbors
-	neighbors, err := collector.CollectNeighbors(exec, namespace)
+	neighbors, err := k.Neighbors(namespace)
 	if err != nil {
 		logs.Warnf("neighbors collection failed ns=%s: %v", ns, err)
 	}
@@ -180,7 +185,7 @@ func collectNamespace(exec collector.Executor, d *db.DB, namespace, vrf string) 
 	logs.Infof("collected neighbors ns=%s count=%d", ns, len(neighbors))
 
 	// 5. Discover VRF L3 master devices and collect VRF-specific data
-	vrfs, err := collector.CollectVRFs(exec, namespace)
+	vrfs, err := k.VRFs(namespace)
 	if err != nil {
 		logs.Warnf("vrf discovery failed ns=%s: %v", ns, err)
 		return
@@ -199,7 +204,7 @@ func collectNamespace(exec collector.Executor, d *db.DB, namespace, vrf string) 
 		}
 
 		// VRF-specific routes
-		vrfRoutes, err := collector.CollectVRFRoutes(exec, namespace, vrfName)
+		vrfRoutes, err := k.VRFRoutes(namespace, vrfName)
 		if err != nil {
 			logs.Warnf("vrf routes collection failed ns=%s vrf=%s: %v", ns, vrfName, err)
 		}
@@ -209,7 +214,7 @@ func collectNamespace(exec collector.Executor, d *db.DB, namespace, vrf string) 
 		logs.Infof("collected vrf routes ns=%s vrf=%s count=%d", ns, vrfName, len(vrfRoutes))
 
 		// VRF-specific rules
-		vrfRules, err := collector.CollectVRFRules(exec, namespace, vrfName)
+		vrfRules, err := k.VRFRules(namespace, vrfName)
 		if err != nil {
 			logs.Warnf("vrf rules collection failed ns=%s vrf=%s: %v", ns, vrfName, err)
 		}
@@ -219,7 +224,7 @@ func collectNamespace(exec collector.Executor, d *db.DB, namespace, vrf string) 
 		logs.Infof("collected vrf rules ns=%s vrf=%s count=%d", ns, vrfName, len(vrfRules))
 
 		// VRF-specific neighbors
-		vrfNeighbors, err := collector.CollectVRFNeighbors(exec, namespace, vrfName)
+		vrfNeighbors, err := k.VRFNeighbors(namespace, vrfName)
 		if err != nil {
 			logs.Warnf("vrf neighbors collection failed ns=%s vrf=%s: %v", ns, vrfName, err)
 		}

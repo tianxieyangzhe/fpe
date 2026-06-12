@@ -20,7 +20,6 @@ type LocalExecutor struct{}
 
 func (e *LocalExecutor) Run(cmd string) (string, error) {
 	out, err := exec.Command("bash", "--login", "-c", cmd).Output()
-	logs.Debugf("run cmd=%q error=%v", cmd, err)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", cmd, err)
 	}

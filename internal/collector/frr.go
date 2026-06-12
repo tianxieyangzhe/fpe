@@ -29,7 +29,7 @@ func CollectFRR(exec Executor) ([]db.FrrInfo, error) {
 }
 
 func runFrrCmd(exec Executor, cmd string) (output, status string) {
-	directCmd := fmt.Sprintf("sudo /anpos/frr/bin/vtysh -N ANPOSNS -c %q", cmd)
+	directCmd := fmt.Sprintf("/anpos/frr/bin/vtysh -N ANPOSNS -c %q", cmd)
 	output, err := exec.Run(directCmd)
 	if err == nil {
 		if isEmptyFRROutput(output) {
@@ -38,7 +38,6 @@ func runFrrCmd(exec Executor, cmd string) (output, status string) {
 		return output, "ok"
 	}
 
-	logs.Warnf("frr direct failed cmd=%q: %v, trying netns", cmd, err)
 	nsCmd := fmt.Sprintf("ip netns exec ANPOSNS vtysh -c %q", cmd)
 	output, err = exec.Run(nsCmd)
 	if err != nil {

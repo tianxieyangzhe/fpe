@@ -24,6 +24,7 @@ func NewServer(d *db.DB) *mcp.Server {
 	addResolvePacket(s, d)
 	addGetPathSegments(s, d)
 	addGetFrrInfo(s, d)
+	addSDWANDiagnose(s, d)
 
 	return s
 }

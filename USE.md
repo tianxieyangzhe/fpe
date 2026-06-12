@@ -22,6 +22,7 @@ go run . serve --db node1.db --transport mcp --addr :8000
 
 ```bash
 go build -o fpe .
+GO_ENABLED=0 GOARCH=amd64 GOOS=linux go build -o fpe .
 ```
 
 ## 采集
